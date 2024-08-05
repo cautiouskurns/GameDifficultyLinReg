@@ -2,23 +2,21 @@ import pygame
 import sys
 import os
 import random
+import csv  # New import for Lesson 4
 
-# Existing constants and imports
-
-# New constants
+# Existing constants
 WIDTH, HEIGHT = 800, 600
 PLAYER_SIZE = 70
 FPS = 60
+POWERUP_SIZE = (50, 50)
+WIN_SCORE = 10
+GAME_DURATION = 10  # seconds
 
-# Colors (Existing code)
+# Existing colors
 WHITE = (255, 255, 255)
 BLUE = (0, 0, 255)
 
-POWERUP_SIZE = (50, 50)  # Example size, adjust as needed
-
-WIN_SCORE = 100
-GAME_DURATION = 60  # seconds
-
+# Existing function
 def load_image(name, size=None):
     fullname = os.path.join("assets", name)
     image = pygame.image.load(fullname)
@@ -26,6 +24,7 @@ def load_image(name, size=None):
         return pygame.transform.scale(image, size)
     return image.convert_alpha()
 
+# Existing Player class
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
@@ -55,6 +54,7 @@ class Player(pygame.sprite.Sprite):
         else:
             self.move(None)
 
+# Existing Powerup class
 class Powerup(pygame.sprite.Sprite):
     def __init__(self, speed_multiplier):
         super().__init__()
@@ -67,13 +67,56 @@ class Powerup(pygame.sprite.Sprite):
         if self.rect.top > HEIGHT:
             self.kill()
 
+# New class for Lesson 4
+class DataCollector:
+    def __init__(self):
+        self.data = []
+        self.current_game_data = {
+            'playtime': 0,
+            'actions': 0,
+            'powerups_collected': 0,
+            'score': 0
+        }
+
+    def update(self, dt, action_taken=False):
+        self.current_game_data['playtime'] += dt
+        if action_taken:
+            self.current_game_data['actions'] += 1
+
+    def record_powerup(self):
+        self.current_game_data['powerups_collected'] += 1
+
+    def set_score(self, score):
+        self.current_game_data['score'] = score
+
+    def save_game_data(self):
+        self.data.append(self.current_game_data.copy())
+        self.reset_current_game_data()
+
+    def reset_current_game_data(self):
+        self.current_game_data = {
+            'playtime': 0,
+            'actions': 0,
+            'powerups_collected': 0,
+            'score': 0
+        }
+
+    def save_to_csv(self, filename='game_data.csv'):
+        with open(filename, 'w', newline='') as csvfile:
+            fieldnames = ['playtime', 'actions', 'powerups_collected', 'score']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for game_data in self.data:
+                writer.writerow(game_data)
+        print(f"Data saved to {filename}")
+
 class Game:
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Casual Mobile Game")
         self.clock = pygame.time.Clock()
-        
+        self.data_collector = DataCollector()  # New for Lesson 4
         self.reset_game()
 
     def reset_game(self):
@@ -86,31 +129,42 @@ class Game:
         self.speed_multiplier = 1.0
         self.start_time = pygame.time.get_ticks()
         self.game_over = False
+        self.data_saved = False  # New flag to prevent multiple saves
+        self.data_collector.reset_current_game_data()  # New for Lesson 4
 
     def run(self):
         self.running = True
         while self.running:
+            dt = self.clock.tick(FPS) / 1000.0  # Modified for Lesson 4
             self.handle_events()
             if not self.game_over:
-                self.update()
+                self.update(dt)  # Modified for Lesson 4
                 self.draw()
             else:
                 self.draw_game_over()
-            self.clock.tick(FPS)
+                if not self.data_saved:  # Check if data has already been saved
+                    self.data_collector.save_game_data()  # New for Lesson 4
+                    self.data_collector.save_to_csv()  # New for Lesson 4
+                    self.data_saved = True  # Set flag to True after saving
 
     def handle_events(self):
+        action_taken = False  # New for Lesson 4
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
+                action_taken = True  # New for Lesson 4
                 if event.key == pygame.K_r and self.game_over:
                     self.reset_game()
                 elif event.key == pygame.K_UP:
                     self.speed_multiplier = min(self.speed_multiplier * 1.1, 2.0)
                 elif event.key == pygame.K_DOWN:
                     self.speed_multiplier = max(self.speed_multiplier / 1.1, 0.5)
+        
+        # New for Lesson 4
+        self.data_collector.update(self.clock.get_time() / 1000.0, action_taken)
 
-    def update(self):
+    def update(self, dt):  # Modified for Lesson 4
         self.all_sprites.update()
         self.powerups.update()
         
@@ -122,6 +176,8 @@ class Game:
         elapsed_time = (pygame.time.get_ticks() - self.start_time) / 1000
         if self.score >= WIN_SCORE or elapsed_time >= GAME_DURATION:
             self.game_over = True
+
+        self.data_collector.set_score(self.score)  # New for Lesson 4
 
     def draw(self):
         self.screen.blit(self.background, (0, 0))
@@ -161,12 +217,14 @@ class Game:
         collected = pygame.sprite.spritecollide(self.player, self.powerups, True)
         for powerup in collected:
             self.score += 10
+            self.data_collector.record_powerup()  # New for Lesson 4
 
+# Existing main function
 def main():
     game = Game()
     game.run()
     pygame.quit()
     sys.exit()
-    
+
 if __name__ == "__main__":
     main()
