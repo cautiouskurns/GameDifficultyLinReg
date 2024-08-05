@@ -6,15 +6,15 @@ import csv
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score  # New import for Lesson 7
-import matplotlib.pyplot as plt  # New import for Lesson 7
+from sklearn.metrics import mean_squared_error, r2_score
+import matplotlib.pyplot as plt
 
 # Existing constants
 WIDTH, HEIGHT = 800, 600
 PLAYER_SIZE = 70
 FPS = 60
 POWERUP_SIZE = (50, 50)
-WIN_SCORE = 100
+WIN_SCORE = 10
 GAME_DURATION = 60  # seconds
 
 # Existing colors
@@ -115,13 +115,14 @@ class DataCollector:
                 writer.writerow(game_data)
         print(f"Data saved to {filename}")
 
-# Modified ScorePredictor class for Lesson 7
+# Modified ScorePredictor class for Lesson 8
 class ScorePredictor:
     def __init__(self):
         self.model = LinearRegression()
         self.is_trained = False
         self.mse = None
         self.r2 = None
+        self.feature_importance = None
 
     def train(self, X, y):
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -136,14 +137,14 @@ class ScorePredictor:
         print(f"Model R² score: {self.r2:.2f}")
         print(f"Mean Squared Error: {self.mse:.2f}")
         
-        # Print feature importances
-        feature_names = ['playtime', 'actions', 'powerups_collected']
-        importances = self.model.coef_
-        for name, importance in zip(feature_names, importances):
-            print(f"{name}: {importance:.4f}")
+        # Calculate feature importance
+        self.feature_importance = self.calculate_feature_importance()
         
         # Create scatter plot
         self.plot_actual_vs_predicted(y_test, y_pred)
+        
+        # Create feature importance plot
+        self.plot_feature_importance()
 
     def predict(self, X):
         if not self.is_trained:
@@ -161,6 +162,35 @@ class ScorePredictor:
         plt.savefig("actual_vs_predicted.png")
         plt.close()
 
+    def calculate_feature_importance(self):
+        feature_names = ['playtime', 'actions', 'powerups_collected']
+        importances = self.model.coef_
+        feature_importance = dict(zip(feature_names, importances))
+        return feature_importance
+
+    def plot_feature_importance(self):
+        plt.figure(figsize=(10, 6))
+        features = list(self.feature_importance.keys())
+        importances = list(self.feature_importance.values())
+        plt.bar(features, importances)
+        plt.xlabel("Features")
+        plt.ylabel("Importance")
+        plt.title("Feature Importance")
+        plt.tight_layout()
+        plt.savefig("feature_importance.png")
+        plt.close()
+
+    def interpret_feature_importance(self):
+        interpretation = "Feature Importance Interpretation:\n"
+        sorted_features = sorted(self.feature_importance.items(), key=lambda x: abs(x[1]), reverse=True)
+        for feature, importance in sorted_features:
+            interpretation += f"- {feature}: {importance:.4f}\n"
+            if importance > 0:
+                interpretation += f"  Positive impact on score. Increasing {feature} tends to increase the score.\n"
+            else:
+                interpretation += f"  Negative impact on score. Increasing {feature} tends to decrease the score.\n"
+        return interpretation
+
 # Existing Game class (unchanged)
 class Game:
     def __init__(self):
@@ -170,7 +200,7 @@ class Game:
         self.clock = pygame.time.Clock()
         self.data_collector = DataCollector()
         self.score_predictor = ScorePredictor()
-        self.data_saved = False  # New attribute to track if data has been saved
+        self.data_saved = False
         self.reset_game()
 
     def reset_game(self):
@@ -184,8 +214,7 @@ class Game:
         self.start_time = pygame.time.get_ticks()
         self.game_over = False
         self.data_collector.reset_current_game_data()
-        self.data_saved = False  # Reset the data_saved flag
-
+        self.data_saved = False
 
     def run(self):
         self.running = True
@@ -286,12 +315,12 @@ class Game:
             self.score += 10
             self.data_collector.record_powerup()
 
-# Modified main function for Lesson 7
+# Modified main function for Lesson 8
 def main():
     game = Game()
     
     # Play a few games to collect initial data
-    for _ in range(5):
+    for _ in range(3):
         game.run()
         game.reset_game()
     
@@ -304,6 +333,9 @@ def main():
     # Display evaluation metrics
     print(f"Mean Squared Error: {game.score_predictor.mse:.2f}")
     print(f"R-squared Score: {game.score_predictor.r2:.2f}")
+    
+    # Display feature importance interpretation
+    print(game.score_predictor.interpret_feature_importance())
     
     # Continue playing with predictions
     while True:
