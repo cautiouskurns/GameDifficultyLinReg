@@ -20,6 +20,9 @@ GAME_DURATION = 60  # seconds
 # Existing colors
 WHITE = (255, 255, 255)
 BLUE = (0, 0, 255)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+YELLOW = (255, 255, 0)
 
 # Existing function
 def load_image(name, size=None):
@@ -115,7 +118,7 @@ class DataCollector:
                 writer.writerow(game_data)
         print(f"Data saved to {filename}")
 
-# Modified ScorePredictor class for Lesson 8
+# Existing ScorePredictor class (unchanged)
 class ScorePredictor:
     def __init__(self):
         self.model = LinearRegression()
@@ -191,7 +194,7 @@ class ScorePredictor:
                 interpretation += f"  Negative impact on score. Increasing {feature} tends to decrease the score.\n"
         return interpretation
 
-# Existing Game class (unchanged)
+# Modified Game class for Lesson 9
 class Game:
     def __init__(self):
         pygame.init()
@@ -215,6 +218,8 @@ class Game:
         self.game_over = False
         self.data_collector.reset_current_game_data()
         self.data_saved = False
+        self.predicted_score = 0
+        self.prediction_accuracy = 0
 
     def run(self):
         self.running = True
@@ -268,35 +273,55 @@ class Game:
 
         self.data_collector.set_score(self.score)
 
+        # Real-time prediction
+        if self.score_predictor.is_trained:
+            current_data = self.data_collector.current_game_data
+            features = [[current_data['playtime'], current_data['actions'], current_data['powerups_collected']]]
+            self.predicted_score = self.score_predictor.predict(features)[0]
+            
+            # Calculate prediction accuracy
+            if self.score > 0:
+                self.prediction_accuracy = 1 - abs(self.predicted_score - self.score) / self.score
+            else:
+                self.prediction_accuracy = 1
+
+        # Adjust difficulty based on prediction
+        if self.predicted_score > self.score * 1.2:  # If predicted score is 20% higher than current score
+            self.speed_multiplier = min(self.speed_multiplier * 1.05, 2.0)  # Increase difficulty
+        elif self.predicted_score < self.score * 0.8:  # If predicted score is 20% lower than current score
+            self.speed_multiplier = max(self.speed_multiplier / 1.05, 0.5)  # Decrease difficulty
+
     def draw(self):
         self.screen.blit(self.background, (0, 0))
         self.all_sprites.draw(self.screen)
         self.powerups.draw(self.screen)
         
-        score_text = self.font.render(f"Score: {self.score}", True, (255, 255, 255))
+        score_text = self.font.render(f"Score: {self.score}", True, WHITE)
         self.screen.blit(score_text, (10, 10))
         
         time_left = max(0, GAME_DURATION - (pygame.time.get_ticks() - self.start_time) / 1000)
-        time_text = self.font.render(f"Time: {time_left:.1f}", True, (255, 255, 255))
+        time_text = self.font.render(f"Time: {time_left:.1f}", True, WHITE)
         self.screen.blit(time_text, (10, 50))
         
-        speed_text = self.font.render(f"Speed: {self.speed_multiplier:.1f}x", True, (255, 255, 255))
+        speed_text = self.font.render(f"Speed: {self.speed_multiplier:.1f}x", True, WHITE)
         self.screen.blit(speed_text, (WIDTH - 150, 10))
         
         if self.score_predictor.is_trained:
-            current_data = self.data_collector.current_game_data
-            features = [[current_data['playtime'], current_data['actions'], current_data['powerups_collected']]]
-            predicted_score = self.score_predictor.predict(features)[0]
-            prediction_text = self.font.render(f"Predicted Score: {predicted_score:.0f}", True, (255, 255, 0))
+            prediction_text = self.font.render(f"Predicted Score: {self.predicted_score:.0f}", True, YELLOW)
             self.screen.blit(prediction_text, (WIDTH - 250, 50))
+            
+            # Visual indicator for prediction accuracy
+            accuracy_color = self.get_accuracy_color(self.prediction_accuracy)
+            accuracy_text = self.font.render(f"Prediction Accuracy: {self.prediction_accuracy:.2f}", True, accuracy_color)
+            self.screen.blit(accuracy_text, (WIDTH - 250, 90))
         
         pygame.display.flip()
 
     def draw_game_over(self):
         self.screen.blit(self.background, (0, 0))
-        game_over_text = self.font.render("Game Over!", True, (255, 0, 0))
-        score_text = self.font.render(f"Final Score: {self.score}", True, (255, 255, 255))
-        restart_text = self.font.render("Press 'R' to restart", True, (255, 255, 255))
+        game_over_text = self.font.render("Game Over!", True, RED)
+        score_text = self.font.render(f"Final Score: {self.score}", True, WHITE)
+        restart_text = self.font.render("Press 'R' to restart", True, WHITE)
         
         self.screen.blit(game_over_text, (WIDTH // 2 - 70, HEIGHT // 2 - 50))
         self.screen.blit(score_text, (WIDTH // 2 - 70, HEIGHT // 2))
@@ -315,7 +340,15 @@ class Game:
             self.score += 10
             self.data_collector.record_powerup()
 
-# Modified main function for Lesson 8
+    def get_accuracy_color(self, accuracy):
+        if accuracy > 0.9:
+            return GREEN
+        elif accuracy > 0.7:
+            return YELLOW
+        else:
+            return RED
+
+# Modified main function for Lesson 9
 def main():
     game = Game()
     
@@ -337,7 +370,7 @@ def main():
     # Display feature importance interpretation
     print(game.score_predictor.interpret_feature_importance())
     
-    # Continue playing with predictions
+    # Continue playing with predictions and enhanced gameplay
     while True:
         game.run()
         if not game.running:
