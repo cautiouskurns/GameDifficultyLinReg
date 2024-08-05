@@ -3,9 +3,9 @@ import sys
 import os
 import random
 import csv
-import numpy as np  # New for Lesson 5
-from sklearn.linear_model import LinearRegression  # New for Lesson 5
-from sklearn.model_selection import train_test_split  # New for Lesson 5
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
 
 # Existing constants
 WIDTH, HEIGHT = 800, 600
@@ -27,7 +27,7 @@ def load_image(name, size=None):
         return pygame.transform.scale(image, size)
     return image.convert_alpha()
 
-# Existing Player class
+# Existing Player class (unchanged)
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
@@ -57,7 +57,7 @@ class Player(pygame.sprite.Sprite):
         else:
             self.move(None)
 
-# Existing Powerup class
+# Existing Powerup class (unchanged)
 class Powerup(pygame.sprite.Sprite):
     def __init__(self, speed_multiplier):
         super().__init__()
@@ -70,7 +70,7 @@ class Powerup(pygame.sprite.Sprite):
         if self.rect.top > HEIGHT:
             self.kill()
 
-# Existing DataCollector class
+# Existing DataCollector class (unchanged)
 class DataCollector:
     def __init__(self):
         self.data = []
@@ -113,7 +113,7 @@ class DataCollector:
                 writer.writerow(game_data)
         print(f"Data saved to {filename}")
 
-# New class for Lesson 5
+# Modified ScorePredictor class for Lesson 6
 class ScorePredictor:
     def __init__(self):
         self.model = LinearRegression()
@@ -125,13 +125,19 @@ class ScorePredictor:
         self.is_trained = True
         score = self.model.score(X_test, y_test)
         print(f"Model R² score: {score:.2f}")
+        
+        # New: Print feature importances
+        feature_names = ['playtime', 'actions', 'powerups_collected']
+        importances = self.model.coef_
+        for name, importance in zip(feature_names, importances):
+            print(f"{name}: {importance:.4f}")
 
     def predict(self, X):
         if not self.is_trained:
             return None
         return self.model.predict(X)
 
-# Modified Game class
+# Modified Game class for Lesson 6
 class Game:
     def __init__(self):
         pygame.init()
@@ -139,7 +145,7 @@ class Game:
         pygame.display.set_caption("Casual Mobile Game")
         self.clock = pygame.time.Clock()
         self.data_collector = DataCollector()
-        self.score_predictor = ScorePredictor()  # New for Lesson 5
+        self.score_predictor = ScorePredictor()
         self.reset_game()
 
     def reset_game(self):
@@ -172,7 +178,8 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
-                sys.exit()
+                pygame.quit()
+                raise SystemExit
             elif event.type == pygame.KEYDOWN:
                 action_taken = True
                 if event.key == pygame.K_r and self.game_over:
@@ -183,7 +190,8 @@ class Game:
                     self.speed_multiplier = max(self.speed_multiplier / 1.1, 0.5)
                 elif event.key == pygame.K_q:
                     self.running = False
-                    sys.exit()
+                    pygame.quit()
+                    raise SystemExit
 
         self.data_collector.update(self.clock.get_time() / 1000.0, action_taken)
 
@@ -217,10 +225,11 @@ class Game:
         speed_text = self.font.render(f"Speed: {self.speed_multiplier:.1f}x", True, (255, 255, 255))
         self.screen.blit(speed_text, (WIDTH - 150, 10))
         
-        # New for Lesson 5: Display predicted score
+        # Modified for Lesson 6: Display predicted score using multiple features
         if self.score_predictor.is_trained:
-            playtime = self.data_collector.current_game_data['playtime']
-            predicted_score = self.score_predictor.predict([[playtime]])[0]
+            current_data = self.data_collector.current_game_data
+            features = [[current_data['playtime'], current_data['actions'], current_data['powerups_collected']]]
+            predicted_score = self.score_predictor.predict(features)[0]
             prediction_text = self.font.render(f"Predicted Score: {predicted_score:.0f}", True, (255, 255, 0))
             self.screen.blit(prediction_text, (WIDTH - 250, 50))
         
@@ -249,7 +258,7 @@ class Game:
             self.score += 10
             self.data_collector.record_powerup()
 
-# Modified main function for Lesson 5
+# Modified main function for Lesson 6
 def main():
     game = Game()
     
@@ -258,9 +267,9 @@ def main():
         game.run()
         game.reset_game()
     
-    # Train the model
+    # Train the model with multiple features
     data = game.data_collector.data
-    X = np.array([[game['playtime']] for game in data])
+    X = np.array([[game['playtime'], game['actions'], game['powerups_collected']] for game in data])
     y = np.array([game['score'] for game in data])
     game.score_predictor.train(X, y)
     
