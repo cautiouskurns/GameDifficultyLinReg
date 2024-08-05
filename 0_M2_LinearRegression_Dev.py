@@ -1,20 +1,29 @@
 import pygame
 import sys
+import os
 
-# Constants
+# Constants (Existing code)
 WIDTH, HEIGHT = 800, 600
-PLAYER_SIZE = 50
+PLAYER_SIZE = 70
 FPS = 60
 
-# Colors
+# Colors (Existing code)
 WHITE = (255, 255, 255)
 BLUE = (0, 0, 255)
+
+# New code: Asset loading
+def load_image(name, size=None):
+    fullname = os.path.join("assets", name)
+    image = pygame.image.load(fullname)
+    if size:
+        return pygame.transform.scale(image, size)
+    return image.convert_alpha()
 
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        self.image = pygame.Surface((PLAYER_SIZE, PLAYER_SIZE))
-        self.image.fill(BLUE)
+        # Modified code: Use image instead of colored surface
+        self.image = load_image("M2_Player.png", (PLAYER_SIZE, PLAYER_SIZE))
         self.rect = self.image.get_rect(center=(WIDTH // 2, HEIGHT - PLAYER_SIZE))
         self.speed = 5
 
@@ -37,6 +46,9 @@ class Game:
         self.player = Player()
         self.all_sprites = pygame.sprite.Group(self.player)
         
+        # New code: Load background
+        self.background = load_image("M2_BG_Space.png", (WIDTH, HEIGHT))
+        
         self.running = True
 
     def run(self):
@@ -56,12 +68,12 @@ class Game:
             self.player.move('left')
         if keys[pygame.K_RIGHT]:
             self.player.move('right')
-
     def update(self):
         self.all_sprites.update()
 
     def draw(self):
-        self.screen.fill(WHITE)
+        # Modified code: Draw background
+        self.screen.blit(self.background, (0, 0))
         self.all_sprites.draw(self.screen)
         pygame.display.flip()
 
