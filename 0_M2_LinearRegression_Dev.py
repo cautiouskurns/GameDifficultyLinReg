@@ -6,6 +6,8 @@ import csv
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score  # New import for Lesson 7
+import matplotlib.pyplot as plt  # New import for Lesson 7
 
 # Existing constants
 WIDTH, HEIGHT = 800, 600
@@ -113,31 +115,53 @@ class DataCollector:
                 writer.writerow(game_data)
         print(f"Data saved to {filename}")
 
-# Modified ScorePredictor class for Lesson 6
+# Modified ScorePredictor class for Lesson 7
 class ScorePredictor:
     def __init__(self):
         self.model = LinearRegression()
         self.is_trained = False
+        self.mse = None
+        self.r2 = None
 
     def train(self, X, y):
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
         self.model.fit(X_train, y_train)
         self.is_trained = True
-        score = self.model.score(X_test, y_test)
-        print(f"Model R² score: {score:.2f}")
         
-        # New: Print feature importances
+        # Calculate evaluation metrics
+        y_pred = self.model.predict(X_test)
+        self.mse = mean_squared_error(y_test, y_pred)
+        self.r2 = r2_score(y_test, y_pred)
+        
+        print(f"Model R² score: {self.r2:.2f}")
+        print(f"Mean Squared Error: {self.mse:.2f}")
+        
+        # Print feature importances
         feature_names = ['playtime', 'actions', 'powerups_collected']
         importances = self.model.coef_
         for name, importance in zip(feature_names, importances):
             print(f"{name}: {importance:.4f}")
+        
+        # Create scatter plot
+        self.plot_actual_vs_predicted(y_test, y_pred)
 
     def predict(self, X):
         if not self.is_trained:
             return None
         return self.model.predict(X)
 
-# Modified Game class for Lesson 6
+    def plot_actual_vs_predicted(self, y_true, y_pred):
+        plt.figure(figsize=(10, 6))
+        plt.scatter(y_true, y_pred, alpha=0.5)
+        plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], 'r--', lw=2)
+        plt.xlabel("Actual Scores")
+        plt.ylabel("Predicted Scores")
+        plt.title("Actual vs Predicted Scores")
+        plt.tight_layout()
+        plt.savefig("actual_vs_predicted.png")
+        plt.close()
+
+# Existing Game class (unchanged)
 class Game:
     def __init__(self):
         pygame.init()
@@ -146,6 +170,7 @@ class Game:
         self.clock = pygame.time.Clock()
         self.data_collector = DataCollector()
         self.score_predictor = ScorePredictor()
+        self.data_saved = False  # New attribute to track if data has been saved
         self.reset_game()
 
     def reset_game(self):
@@ -159,6 +184,8 @@ class Game:
         self.start_time = pygame.time.get_ticks()
         self.game_over = False
         self.data_collector.reset_current_game_data()
+        self.data_saved = False  # Reset the data_saved flag
+
 
     def run(self):
         self.running = True
@@ -169,9 +196,11 @@ class Game:
                 self.update(dt)
                 self.draw()
             else:
+                if not self.data_saved:
+                    self.data_collector.save_game_data()
+                    self.data_collector.save_to_csv()
+                    self.data_saved = True
                 self.draw_game_over()
-                self.data_collector.save_game_data()
-                self.data_collector.save_to_csv()
 
     def handle_events(self):
         action_taken = False
@@ -225,7 +254,6 @@ class Game:
         speed_text = self.font.render(f"Speed: {self.speed_multiplier:.1f}x", True, (255, 255, 255))
         self.screen.blit(speed_text, (WIDTH - 150, 10))
         
-        # Modified for Lesson 6: Display predicted score using multiple features
         if self.score_predictor.is_trained:
             current_data = self.data_collector.current_game_data
             features = [[current_data['playtime'], current_data['actions'], current_data['powerups_collected']]]
@@ -258,7 +286,7 @@ class Game:
             self.score += 10
             self.data_collector.record_powerup()
 
-# Modified main function for Lesson 6
+# Modified main function for Lesson 7
 def main():
     game = Game()
     
@@ -272,6 +300,10 @@ def main():
     X = np.array([[game['playtime'], game['actions'], game['powerups_collected']] for game in data])
     y = np.array([game['score'] for game in data])
     game.score_predictor.train(X, y)
+    
+    # Display evaluation metrics
+    print(f"Mean Squared Error: {game.score_predictor.mse:.2f}")
+    print(f"R-squared Score: {game.score_predictor.r2:.2f}")
     
     # Continue playing with predictions
     while True:
