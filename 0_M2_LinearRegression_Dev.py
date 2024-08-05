@@ -7,7 +7,10 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
+import matplotlib
+matplotlib.use('Agg')  # Use Agg backend
 import matplotlib.pyplot as plt
+from pygame import mixer  # For sound effects
 
 # Existing constants
 WIDTH, HEIGHT = 800, 600
@@ -32,7 +35,7 @@ def load_image(name, size=None):
         return pygame.transform.scale(image, size)
     return image.convert_alpha()
 
-# Existing Player class (unchanged)
+# Modified Player class with smart AI movement
 class Player(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
@@ -41,6 +44,7 @@ class Player(pygame.sprite.Sprite):
         self.speed = 0
         self.acceleration = 0.5
         self.max_speed = 7
+        self.ai_controlled = False
 
     def move(self, direction):
         if direction == 'left':
@@ -53,12 +57,27 @@ class Player(pygame.sprite.Sprite):
         self.rect.x += self.speed
         self.rect.x = max(0, min(WIDTH - PLAYER_SIZE, self.rect.x))
 
-    def update(self):
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:
-            self.move('left')
-        elif keys[pygame.K_RIGHT]:
-            self.move('right')
+    def update(self, powerups):
+        if self.ai_controlled:
+            self.ai_move(powerups)
+        else:
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT]:
+                self.move('left')
+            elif keys[pygame.K_RIGHT]:
+                self.move('right')
+            else:
+                self.move(None)
+
+    def ai_move(self, powerups):
+        if powerups:
+            target = min(powerups, key=lambda p: p.rect.bottom)
+            if target.rect.centerx < self.rect.centerx:
+                self.move('left')
+            elif target.rect.centerx > self.rect.centerx:
+                self.move('right')
+            else:
+                self.move(None)
         else:
             self.move(None)
 
@@ -70,7 +89,7 @@ class Powerup(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=(random.randint(0, WIDTH), 0))
         self.speed = 3 * speed_multiplier
 
-    def update(self):
+    def update(self, *args):
         self.rect.y += self.speed
         if self.rect.top > HEIGHT:
             self.kill()
@@ -155,9 +174,9 @@ class ScorePredictor:
         return self.model.predict(X)
 
     def plot_actual_vs_predicted(self, y_true, y_pred):
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(8, 6))
         plt.scatter(y_true, y_pred, alpha=0.5)
-        plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], 'r--', lw=2)
+        plt.plot([min(y_true), max(y_true)], [min(y_true), max(y_true)], 'r--', lw=2)
         plt.xlabel("Actual Scores")
         plt.ylabel("Predicted Scores")
         plt.title("Actual vs Predicted Scores")
@@ -172,7 +191,7 @@ class ScorePredictor:
         return feature_importance
 
     def plot_feature_importance(self):
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(8, 6))
         features = list(self.feature_importance.keys())
         importances = list(self.feature_importance.values())
         plt.bar(features, importances)
@@ -194,17 +213,26 @@ class ScorePredictor:
                 interpretation += f"  Negative impact on score. Increasing {feature} tends to decrease the score.\n"
         return interpretation
 
-# Modified Game class for Lesson 9
+# Modified Game class for Lesson 10
 class Game:
     def __init__(self):
         pygame.init()
+        mixer.init()  # Initialize the mixer for sound effects
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         pygame.display.set_caption("Casual Mobile Game")
         self.clock = pygame.time.Clock()
         self.data_collector = DataCollector()
         self.score_predictor = ScorePredictor()
         self.data_saved = False
+        self.load_sounds()
         self.reset_game()
+        self.plot_images = None
+        self.plot_surfaces = None
+
+
+    def load_sounds(self):
+        self.powerup_sound = mixer.Sound("assets/Power_Up.wav")
+        self.game_over_sound = mixer.Sound("assets/GameOver.wav")
 
     def reset_game(self):
         self.player = Player()
@@ -234,6 +262,7 @@ class Game:
                     self.data_collector.save_game_data()
                     self.data_collector.save_to_csv()
                     self.data_saved = True
+                    self.game_over_sound.play()
                 self.draw_game_over()
 
     def handle_events(self):
@@ -255,11 +284,13 @@ class Game:
                     self.running = False
                     pygame.quit()
                     raise SystemExit
+                elif event.key == pygame.K_a:
+                    self.player.ai_controlled = not self.player.ai_controlled
 
         self.data_collector.update(self.clock.get_time() / 1000.0, action_taken)
 
     def update(self, dt):
-        self.all_sprites.update()
+        self.all_sprites.update(self.powerups)
         self.powerups.update()
         
         if random.random() < 0.02 * self.speed_multiplier:
@@ -315,6 +346,15 @@ class Game:
             accuracy_text = self.font.render(f"Prediction Accuracy: {self.prediction_accuracy:.2f}", True, accuracy_color)
             self.screen.blit(accuracy_text, (WIDTH - 250, 90))
         
+        ai_status = "ON" if self.player.ai_controlled else "OFF"
+        ai_text = self.font.render(f"AI: {ai_status}", True, WHITE)
+        self.screen.blit(ai_text, (10, HEIGHT - 40))
+        pygame.display.flip()
+
+        if self.plot_surfaces:
+                    self.screen.blit(self.plot_surfaces[0], (WIDTH - 420, HEIGHT - 320))
+                    self.screen.blit(self.plot_surfaces[1], (20, HEIGHT - 320))
+                
         pygame.display.flip()
 
     def draw_game_over(self):
@@ -326,6 +366,12 @@ class Game:
         self.screen.blit(game_over_text, (WIDTH // 2 - 70, HEIGHT // 2 - 50))
         self.screen.blit(score_text, (WIDTH // 2 - 70, HEIGHT // 2))
         self.screen.blit(restart_text, (WIDTH // 2 - 100, HEIGHT // 2 + 50))
+        
+        # New: Display win/lose condition based on prediction accuracy
+        condition_text = "Win" if self.prediction_accuracy > 0.9 else "Lose"
+        condition_color = GREEN if condition_text == "Win" else RED
+        condition_render = self.font.render(f"Prediction-based Result: {condition_text}", True, condition_color)
+        self.screen.blit(condition_render, (WIDTH // 2 - 150, HEIGHT // 2 + 100))
         
         pygame.display.flip()
 
@@ -339,6 +385,7 @@ class Game:
         for powerup in collected:
             self.score += 10
             self.data_collector.record_powerup()
+            self.powerup_sound.play()  # Play sound effect
 
     def get_accuracy_color(self, accuracy):
         if accuracy > 0.9:
@@ -348,20 +395,35 @@ class Game:
         else:
             return RED
 
-# Modified main function for Lesson 9
+# Modified main function for Lesson 10
 def main():
     game = Game()
-    
+    max_games = 10  # Set the maximum number of games
+    games_played = 0
+
     # Play a few games to collect initial data
     for _ in range(3):
         game.run()
         game.reset_game()
+        games_played += 1
     
     # Train the model with multiple features
     data = game.data_collector.data
     X = np.array([[game['playtime'], game['actions'], game['powerups_collected']] for game in data])
     y = np.array([game['score'] for game in data])
     game.score_predictor.train(X, y)
+    
+    # Generate plots
+    game.score_predictor.plot_actual_vs_predicted(y, game.score_predictor.predict(X))
+    game.score_predictor.plot_feature_importance()
+    
+    # Load plot images as Pygame surfaces
+    actual_vs_predicted_surf = pygame.image.load("actual_vs_predicted.png")
+    feature_importance_surf = pygame.image.load("feature_importance.png")
+    game.plot_surfaces = [
+        pygame.transform.scale(actual_vs_predicted_surf, (400, 300)),
+        pygame.transform.scale(feature_importance_surf, (400, 300))
+    ]
     
     # Display evaluation metrics
     print(f"Mean Squared Error: {game.score_predictor.mse:.2f}")
@@ -371,11 +433,13 @@ def main():
     print(game.score_predictor.interpret_feature_importance())
     
     # Continue playing with predictions and enhanced gameplay
-    while True:
+    while games_played < max_games:
         game.run()
         if not game.running:
             break
         game.reset_game()
+        games_played += 1
+        print(f"Games played: {games_played}/{max_games}")
 
     pygame.quit()
     sys.exit()
